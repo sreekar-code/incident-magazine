@@ -1,5 +1,3 @@
-$ cat /Users/sreekar/Documents/Dev/slack-incident-magazine/magazine.py
-
 import os
 import requests
 from datetime import datetime, timedelta
@@ -17,7 +15,6 @@ def is_relevant(text):
     return any(kw in text for kw in KEYWORDS)
 
 def fetch_hn_posts(n=2):
-    """Fetch top relevant HN stories from the past 30 days via Algolia."""
     since = int((datetime.utcnow() - timedelta(days=30)).timestamp())
     queries = ["incident", "on-call", "reliability", "outage", "postmortem"]
     seen = {}
@@ -44,13 +41,11 @@ def fetch_hn_posts(n=2):
     return ranked[:n]
 
 def fetch_reddit_posts(n=2):
-    """Fetch hot posts from r/devops and r/sre and filter locally."""
     subreddits = ["devops", "sre"]
     headers = {"User-Agent": "SlackIncidentMagazine/1.0 (daily digest bot)"}
     candidates = []
 
     for sub in subreddits:
-        # Fetch hot posts and top posts from the week
         for sort in ["hot", "top"]:
             params = "?limit=25" if sort == "hot" else "?limit=25&t=week"
             url = f"https://www.reddit.com/r/{sub}/{sort}.json{params}"
@@ -65,7 +60,6 @@ def fetch_reddit_posts(n=2):
             except Exception as e:
                 print(f"Reddit fetch error for r/{sub}/{sort}: {e}")
 
-    # Deduplicate by post id, then rank by score
     seen = {}
     for post in candidates:
         pid = post["id"]
@@ -92,10 +86,7 @@ def build_digest(hn_posts, reddit_posts):
             ],
         },
         {"type": "divider"},
-        {
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": "*🔶  Hacker News*"},
-        },
+        {"type": "section", "text": {"type": "mrkdwn", "text": "*🔶  Hacker News*"}},
     ]
 
     if hn_posts:
@@ -110,24 +101,15 @@ def build_digest(hn_posts, reddit_posts):
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": (
-                        f"*<{story_url}|{title}>*\n"
-                        f"↑ {points} points by {author}  ·  <{discuss_url}|{comments} comments>"
-                    ),
+                    "text": f"*<{story_url}|{title}>*\n↑ {points} points by {author}  ·  <{discuss_url}|{comments} comments>",
                 },
             })
     else:
-        blocks.append({
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": "_No relevant HN stories found today._"},
-        })
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "_No relevant HN stories found today._"}})
 
     blocks += [
         {"type": "divider"},
-        {
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": "*🤖  Reddit — r/devops & r/sre*"},
-        },
+        {"type": "section", "text": {"type": "mrkdwn", "text": "*🤖  Reddit — r/devops & r/sre*"}},
     ]
 
     if reddit_posts:
@@ -142,17 +124,11 @@ def build_digest(hn_posts, reddit_posts):
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": (
-                        f"*<{permalink}|{title}>*\n"
-                        f"↑ {score}  ·  {subreddit}  ·  u/{author}  ·  {comments} comments"
-                    ),
+                    "text": f"*<{permalink}|{title}>*\n↑ {score}  ·  {subreddit}  ·  u/{author}  ·  {comments} comments",
                 },
             })
     else:
-        blocks.append({
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": "_No relevant Reddit posts found today._"},
-        })
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "_No relevant Reddit posts found today._"}})
 
     blocks.append({"type": "divider"})
     blocks.append({
