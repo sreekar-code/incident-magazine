@@ -1,3 +1,5 @@
+$ cat /Users/sreekar/Documents/Dev/slack-incident-magazine/magazine.py
+
 import os
 import requests
 from datetime import datetime, timedelta
@@ -15,9 +17,9 @@ def is_relevant(text):
     return any(kw in text for kw in KEYWORDS)
 
 def fetch_hn_posts(n=2):
-    """Fetch top relevant HN stories from the past 7 days via Algolia."""
-    since = int((datetime.utcnow() - timedelta(days=7)).timestamp())
-    queries = ["incident management", "on-call engineering", "site reliability"]
+    """Fetch top relevant HN stories from the past 30 days via Algolia."""
+    since = int((datetime.utcnow() - timedelta(days=30)).timestamp())
+    queries = ["incident", "on-call", "reliability", "outage", "postmortem"]
     seen = {}
 
     for query in queries:
@@ -25,15 +27,15 @@ def fetch_hn_posts(n=2):
             f"https://hn.algolia.com/api/v1/search"
             f"?query={requests.utils.quote(query)}"
             f"&tags=story"
-            f"&numericFilters=created_at_i>{since},points>5"
-            f"&hitsPerPage=10"
+            f"&numericFilters=created_at_i>{since}"
+            f"&hitsPerPage=20"
         )
         try:
             resp = requests.get(url, timeout=10)
             resp.raise_for_status()
             for hit in resp.json().get("hits", []):
                 oid = hit["objectID"]
-                if oid not in seen and is_relevant(hit.get("title", "")):
+                if oid not in seen:
                     seen[oid] = hit
         except Exception as e:
             print(f"HN fetch error for '{query}': {e}")
@@ -42,29 +44,33 @@ def fetch_hn_posts(n=2):
     return ranked[:n]
 
 def fetch_reddit_posts(n=2):
-    """Fetch top relevant posts from r/devops and r/sre from the past week."""
+    """Fetch hot posts from r/devops and r/sre and filter locally."""
     subreddits = ["devops", "sre"]
     headers = {"User-Agent": "SlackIncidentMagazine/1.0 (daily digest bot)"}
-    search_terms = "incident management OR on-call OR oncall OR outage OR postmortem OR alerting"
-    seen = {}
+    candidates = []
 
     for sub in subreddits:
-        url = (
-            f"https://www.reddit.com/r/{sub}/search.json"
-            f"?q={requests.utils.quote(search_terms)}"
-            f"&sort=top&t=week&limit=10&restrict_sr=1"
-        )
-        try:
-            resp = requests.get(url, headers=headers, timeout=10)
-            resp.raise_for_status()
-            children = resp.json().get("data", {}).get("children", [])
-            for child in children:
-                post = child["data"]
-                pid = post["id"]
-                if pid not in seen and is_relevant(post.get("title", "") + " " + post.get("selftext", "")):
-                    seen[pid] = post
-        except Exception as e:
-            print(f"Reddit fetch error for r/{sub}: {e}")
+        # Fetch hot posts and top posts from the week
+        for sort in ["hot", "top"]:
+            params = "?limit=25" if sort == "hot" else "?limit=25&t=week"
+            url = f"https://www.reddit.com/r/{sub}/{sort}.json{params}"
+            try:
+                resp = requests.get(url, headers=headers, timeout=10)
+                resp.raise_for_status()
+                children = resp.json().get("data", {}).get("children", [])
+                for child in children:
+                    post = child["data"]
+                    if is_relevant(post.get("title", "") + " " + post.get("selftext", "")):
+                        candidates.append(post)
+            except Exception as e:
+                print(f"Reddit fetch error for r/{sub}/{sort}: {e}")
+
+    # Deduplicate by post id, then rank by score
+    seen = {}
+    for post in candidates:
+        pid = post["id"]
+        if pid not in seen:
+            seen[pid] = post
 
     ranked = sorted(seen.values(), key=lambda p: p.get("score", 0), reverse=True)
     return ranked[:n]
