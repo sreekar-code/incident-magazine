@@ -40,36 +40,27 @@ def fetch_hn_posts(n=2):
     ranked = sorted(seen.values(), key=lambda h: h.get("points", 0), reverse=True)
     return ranked[:n]
 
-def fetch_reddit_posts(n=2):
-    subreddits = ["devops", "sre"]
-    headers = {"User-Agent": "SlackIncidentMagazine/1.0 (daily digest bot)"}
-    candidates = []
-
-    for sub in subreddits:
-        for sort in ["hot", "top"]:
-            params = "?limit=25" if sort == "hot" else "?limit=25&t=week"
-            url = f"https://www.reddit.com/r/{sub}/{sort}.json{params}"
-            try:
-                resp = requests.get(url, headers=headers, timeout=10)
-                resp.raise_for_status()
-                children = resp.json().get("data", {}).get("children", [])
-                for child in children:
-                    post = child["data"]
-                    if is_relevant(post.get("title", "") + " " + post.get("selftext", "")):
-                        candidates.append(post)
-            except Exception as e:
-                print(f"Reddit fetch error for r/{sub}/{sort}: {e}")
-
+def fetch_devto_posts(n=2):
+    tags = ["devops", "sre", "incident"]
+    headers = {"User-Agent": "SlackIncidentMagazine/1.0"}
     seen = {}
-    for post in candidates:
-        pid = post["id"]
-        if pid not in seen:
-            seen[pid] = post
 
-    ranked = sorted(seen.values(), key=lambda p: p.get("score", 0), reverse=True)
+    for tag in tags:
+        url = f"https://dev.to/api/articles?tag={tag}&top=7&per_page=10"
+        try:
+            resp = requests.get(url, headers=headers, timeout=10)
+            resp.raise_for_status()
+            for article in resp.json():
+                aid = article["id"]
+                if aid not in seen and is_relevant(article.get("title", "") + " " + article.get("description", "")):
+                    seen[aid] = article
+        except Exception as e:
+            print(f"DEV.to fetch error for tag '{tag}': {e}")
+
+    ranked = sorted(seen.values(), key=lambda a: a.get("public_reactions_count", 0), reverse=True)
     return ranked[:n]
 
-def build_digest(hn_posts, reddit_posts):
+def build_digest(hn_posts, devto_posts):
     today = datetime.utcnow().strftime("%B %d, %Y")
     blocks = [
         {
@@ -81,7 +72,7 @@ def build_digest(hn_posts, reddit_posts):
             "elements": [
                 {
                     "type": "mrkdwn",
-                    "text": "Top stories on incident response, on-call, and reliability from Hacker News & Reddit.",
+                    "text": "Top stories on incident response, on-call, and reliability from Hacker News & DEV.to.",
                 }
             ],
         },
@@ -101,7 +92,10 @@ def build_digest(hn_posts, reddit_posts):
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*<{story_url}|{title}>*\n↑ {points} points by {author}  ·  <{discuss_url}|{comments} comments>",
+                    "text": (
+                        f"*<{story_url}|{title}>*\n"
+                        f"↑ {points} points by {author}  ·  <{discuss_url}|{comments} comments>"
+                    ),
                 },
             })
     else:
@@ -109,31 +103,34 @@ def build_digest(hn_posts, reddit_posts):
 
     blocks += [
         {"type": "divider"},
-        {"type": "section", "text": {"type": "mrkdwn", "text": "*🤖  Reddit — r/devops & r/sre*"}},
+        {"type": "section", "text": {"type": "mrkdwn", "text": "*📝  DEV.to*"}},
     ]
 
-    if reddit_posts:
-        for post in reddit_posts:
-            title = post.get("title", "Untitled")
-            permalink = f"https://reddit.com{post.get('permalink', '')}"
-            score = post.get("score", 0)
-            comments = post.get("num_comments", 0)
-            subreddit = post.get("subreddit_name_prefixed", "r/?")
-            author = post.get("author", "")
+    if devto_posts:
+        for article in devto_posts:
+            title = article.get("title", "Untitled")
+            url = article.get("url", "")
+            reactions = article.get("public_reactions_count", 0)
+            comments = article.get("comments_count", 0)
+            author = article.get("user", {}).get("name", "")
+            tags = "  ".join(f"`#{t}`" for t in article.get("tag_list", [])[:3])
             blocks.append({
                 "type": "section",
                 "text": {
                     "type": "mrkdwn",
-                    "text": f"*<{permalink}|{title}>*\n↑ {score}  ·  {subreddit}  ·  u/{author}  ·  {comments} comments",
+                    "text": (
+                        f"*<{url}|{title}>*\n"
+                        f"❤️ {reactions}  ·  💬 {comments}  ·  by {author}  ·  {tags}"
+                    ),
                 },
             })
     else:
-        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "_No relevant Reddit posts found today._"}})
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "_No relevant DEV.to articles found today._"}})
 
     blocks.append({"type": "divider"})
     blocks.append({
         "type": "context",
-        "elements": [{"type": "mrkdwn", "text": "Delivered daily at 9 AM IST  ·  Sources: Hacker News, r/devops, r/sre"}],
+        "elements": [{"type": "mrkdwn", "text": "Delivered daily at 9 AM IST  ·  Sources: Hacker News, DEV.to"}],
     })
 
     return {"blocks": blocks}
@@ -147,11 +144,11 @@ if __name__ == "__main__":
     hn = fetch_hn_posts()
     print(f"  Found {len(hn)} HN posts")
 
-    print("Fetching Reddit posts...")
-    reddit = fetch_reddit_posts()
-    print(f"  Found {len(reddit)} Reddit posts")
+    print("Fetching DEV.to posts...")
+    devto = fetch_devto_posts()
+    print(f"  Found {len(devto)} DEV.to posts")
 
-    digest = build_digest(hn, reddit)
+    digest = build_digest(hn, devto)
 
     print("Posting to Slack...")
     post_to_slack(digest)
