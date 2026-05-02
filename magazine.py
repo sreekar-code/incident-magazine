@@ -1,8 +1,11 @@
 import os
+import json
 import requests
 from datetime import datetime, timedelta
 
 SLACK_WEBHOOK_URL = os.environ["SLACK_WEBHOOK_URL"]
+SEEN_FILE = "seen_posts.json"
+MAX_SEEN = 200
 
 KEYWORDS = [
     "incident", "on-call", "oncall", "outage", "postmortem", "post-mortem",
@@ -14,10 +17,22 @@ def is_relevant(text):
     text = text.lower()
     return any(kw in text for kw in KEYWORDS)
 
-def fetch_hn_posts(n=2):
+def load_seen():
+    try:
+        with open(SEEN_FILE) as f:
+            return set(json.load(f))
+    except FileNotFoundError:
+        return set()
+
+def save_seen(seen):
+    entries = list(seen)[-MAX_SEEN:]
+    with open(SEEN_FILE, "w") as f:
+        json.dump(entries, f)
+
+def fetch_hn_posts(seen, n=2):
     since = int((datetime.utcnow() - timedelta(days=30)).timestamp())
     queries = ["incident", "on-call", "reliability", "outage", "postmortem"]
-    seen = {}
+    candidates = {}
 
     for query in queries:
         url = (
@@ -32,32 +47,35 @@ def fetch_hn_posts(n=2):
             resp.raise_for_status()
             for hit in resp.json().get("hits", []):
                 oid = hit["objectID"]
-                if oid not in seen:
-                    seen[oid] = hit
+                sid = f"hn_{oid}"
+                if sid not in seen and oid not in candidates:
+                    candidates[oid] = hit
         except Exception as e:
             print(f"HN fetch error for '{query}': {e}")
 
-    ranked = sorted(seen.values(), key=lambda h: h.get("points", 0), reverse=True)
+    ranked = sorted(candidates.values(), key=lambda h: h.get("points", 0), reverse=True)
     return ranked[:n]
 
-def fetch_devto_posts(n=2):
+def fetch_devto_posts(seen, n=2):
     tags = ["devops", "sre", "incident"]
     headers = {"User-Agent": "SlackIncidentMagazine/1.0"}
-    seen = {}
+    candidates = {}
 
     for tag in tags:
-        url = f"https://dev.to/api/articles?tag={tag}&top=7&per_page=10"
+        url = f"https://dev.to/api/articles?tag={tag}&top=30&per_page=10"
         try:
             resp = requests.get(url, headers=headers, timeout=10)
             resp.raise_for_status()
             for article in resp.json():
                 aid = article["id"]
-                if aid not in seen and is_relevant(article.get("title", "") + " " + article.get("description", "")):
-                    seen[aid] = article
+                sid = f"devto_{aid}"
+                if sid not in seen and aid not in candidates:
+                    if is_relevant(article.get("title", "") + " " + article.get("description", "")):
+                        candidates[aid] = article
         except Exception as e:
             print(f"DEV.to fetch error for tag '{tag}': {e}")
 
-    ranked = sorted(seen.values(), key=lambda a: a.get("public_reactions_count", 0), reverse=True)
+    ranked = sorted(candidates.values(), key=lambda a: a.get("public_reactions_count", 0), reverse=True)
     return ranked[:n]
 
 def build_digest(hn_posts, devto_posts):
@@ -99,7 +117,7 @@ def build_digest(hn_posts, devto_posts):
                 },
             })
     else:
-        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "_No relevant HN stories found today._"}})
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "_No new HN stories today._"}})
 
     blocks += [
         {"type": "divider"},
@@ -125,7 +143,7 @@ def build_digest(hn_posts, devto_posts):
                 },
             })
     else:
-        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "_No relevant DEV.to articles found today._"}})
+        blocks.append({"type": "section", "text": {"type": "mrkdwn", "text": "_No new DEV.to articles today._"}})
 
     blocks.append({"type": "divider"})
     blocks.append({
@@ -140,16 +158,27 @@ def post_to_slack(payload):
     resp.raise_for_status()
 
 if __name__ == "__main__":
+    seen = load_seen()
+    print(f"Loaded {len(seen)} seen post IDs")
+
     print("Fetching HN posts...")
-    hn = fetch_hn_posts()
-    print(f"  Found {len(hn)} HN posts")
+    hn = fetch_hn_posts(seen)
+    print(f"  Found {len(hn)} new HN posts")
 
     print("Fetching DEV.to posts...")
-    devto = fetch_devto_posts()
-    print(f"  Found {len(devto)} DEV.to posts")
+    devto = fetch_devto_posts(seen)
+    print(f"  Found {len(devto)} new DEV.to posts")
 
     digest = build_digest(hn, devto)
 
     print("Posting to Slack...")
     post_to_slack(digest)
-    print("Done!")
+    print("Posted!")
+
+    for post in hn:
+        seen.add(f"hn_{post['objectID']}")
+    for article in devto:
+        seen.add(f"devto_{article['id']}")
+
+    save_seen(seen)
+    print(f"Saved {len(seen)} seen post IDs")
