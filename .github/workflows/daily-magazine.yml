@@ -1,9 +1,9 @@
-name: Daily Incident Magazine
+name: Weekly Incident Magazine
 
 on:
   schedule:
-    # 3:30 AM UTC = 9:00 AM IST
-    - cron: "30 3 * * *"
+    # Monday 3:30 AM UTC = 9:00 AM IST
+    - cron: "30 3 * * 1"
   workflow_dispatch: # allow manual runs
 
 permissions:
@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Post daily magazine
+      - name: Post weekly magazine
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
         run: python magazine.py

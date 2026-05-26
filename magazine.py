@@ -30,7 +30,7 @@ def save_seen(seen):
         json.dump(entries, f)
 
 def fetch_hn_posts(seen, n=2):
-    since = int((datetime.utcnow() - timedelta(days=30)).timestamp())
+    since = int((datetime.utcnow() - timedelta(days=7)).timestamp())
     queries = ["incident", "on-call", "reliability", "outage", "postmortem"]
     candidates = {}
 
@@ -62,7 +62,7 @@ def fetch_devto_posts(seen, n=2):
     candidates = {}
 
     for tag in tags:
-        url = f"https://dev.to/api/articles?tag={tag}&top=30&per_page=10"
+        url = f"https://dev.to/api/articles?tag={tag}&top=7&per_page=10"
         try:
             resp = requests.get(url, headers=headers, timeout=10)
             resp.raise_for_status()
@@ -83,7 +83,7 @@ def build_digest(hn_posts, devto_posts):
     blocks = [
         {
             "type": "header",
-            "text": {"type": "plain_text", "text": f"📰  Incident Management Daily — {today}"},
+            "text": {"type": "plain_text", "text": f"📰  Incident Management Weekly — {today}"},
         },
         {
             "type": "context",
@@ -148,7 +148,7 @@ def build_digest(hn_posts, devto_posts):
     blocks.append({"type": "divider"})
     blocks.append({
         "type": "context",
-        "elements": [{"type": "mrkdwn", "text": "Delivered daily at 9 AM IST  ·  Sources: Hacker News, DEV.to"}],
+        "elements": [{"type": "mrkdwn", "text": "Delivered every Monday at 9 AM IST  ·  Sources: Hacker News, DEV.to"}],
     })
 
     return {"blocks": blocks}
