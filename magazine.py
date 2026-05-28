@@ -148,7 +148,7 @@ def build_digest(hn_posts, devto_posts):
     blocks.append({"type": "divider"})
     blocks.append({
         "type": "context",
-        "elements": [{"type": "mrkdwn", "text": "Delivered every Monday at 9 AM IST  ·  Sources: Hacker News, DEV.to"}],
+        "elements": [{"type": "mrkdwn", "text": "Delivered every Tuesday at 9 AM IST  ·  Sources: Hacker News, DEV.to"}],
     })
 
     return {"blocks": blocks}

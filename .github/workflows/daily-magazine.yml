@@ -2,8 +2,8 @@ name: Weekly Incident Magazine
 
 on:
   schedule:
-    # Monday 3:30 AM UTC = 9:00 AM IST
-    - cron: "30 3 * * 1"
+    # Tuesday 3:30 AM UTC = 9:00 AM IST
+    - cron: "30 3 * * 2"
   workflow_dispatch: # allow manual runs
 
 permissions:
