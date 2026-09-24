@@ -1,7 +1,10 @@
 name: Weekly Incident Magazine
 
 on:
-  workflow_dispatch: # paused — run manually to resume
+  schedule:
+    # Tuesday 3:30 AM UTC = 9:00 AM IST
+    - cron: "30 3 * * 2"
+  workflow_dispatch:
 
 permissions:
   contents: write
